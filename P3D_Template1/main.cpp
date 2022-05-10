@@ -452,13 +452,15 @@ void setupGLUT(int argc, char* argv[])
 
 Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_dir, Material *mat, Vector pos) {
 	Vector halfway_dir = (light_dir + view_dir).normalize();
-
-	Color spec = mat->GetSpecColor() * pow(max((normal * halfway_dir), 0.0), mat->GetShine()) * mat->GetSpecular();
-	Color diff = mat->GetDiffColor() * max(normal * light_dir, 0) * mat->GetDiffuse();
 	float distance = (light->position - pos).length();
-	Color result = (diff + spec); // *1 / (1 + 0.1 * distance + 0.01 * pow(distance, 2));
 
-	return result;
+	float diff = max(normal * light_dir, 0);
+	Color diffuse = light->color * diff * mat->GetDiffColor();
+
+	float spec = pow(max((normal * halfway_dir), 0.0), mat->GetShine());
+	Color specular = mat->GetSpecColor() * spec * light->color;
+
+	return (diffuse)/(1 + 0.1*distance + 0.03*distance*distance);
 }
 
 /////////////////////////////////////////////////////YOUR CODE HERE///////////////////////////////////////////////////////////////////////////////////////
@@ -488,7 +490,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		Light* l = scene->getLight(i);
-		L = (phit - l->position).normalize();
+		L = (l->position - phit).normalize();
 
 		float intensity = L * nhit;
 
@@ -496,17 +498,16 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
 		reflection = reflection.normalize();
 		
-		//printf("%f\n", abs(L * reflection));
 		if (intensity > 0) {
-			color += calculateColor(nhit, l, L, ray.direction*-1, hit->GetMaterial(), phit);
+			color += calculateColor(nhit, l, L, ray.direction, hit->GetMaterial(), phit);
 		}
 
 	}
 
-	if (hit->GetMaterial()->GetReflection() > 0 && depth < 2) {
+	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
-		Ray reflRay = Ray(phit + nhit, reflection.normalize());
-		//color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+		Ray reflRay = Ray(phit + nhit*0.001, reflection.normalize());
+		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
 	}
 
 	return color;
@@ -540,7 +541,6 @@ void renderScene()
 
 			/*YOUR 2 FUNCTIONS:*/
 			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-
 			color = rayTracing(ray, 1, 1.0).clamp();
 
 			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template

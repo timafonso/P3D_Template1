@@ -90,7 +90,7 @@ public:
 		Vector world;
 		float df = (eye - at).length();
 		world = n * df + v * h * (vec.y / res_y - 0.5f) + u * w * (vec.x / res_x - 0.5f);
-
+		world *= (-1);
 		return world.normalize();
 	}
 };
