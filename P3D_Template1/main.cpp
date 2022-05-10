@@ -25,7 +25,7 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = true;
+bool drawModeEnabled = false;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
@@ -459,6 +459,15 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 
 	float spec = pow(max((normal * halfway_dir), 0.0), mat->GetShine());
 	Color specular = mat->GetSpecColor() * spec * light->color;
+
+	Ray r = Ray(pos, light_dir);
+	for (int i = 0; i < scene->getNumObjects(); i++) {
+		Object* obj = scene->getObject(i);
+		float dist = 0.0f;
+		if (obj->intercepts(r, dist)) {
+			return Color(0, 0, 0);
+		}
+	}
 
 	return (diffuse)/(1 + 0.1*distance + 0.03*distance*distance);
 }
