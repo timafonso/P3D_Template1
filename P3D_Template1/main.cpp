@@ -25,7 +25,7 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = false;
+bool drawModeEnabled = true;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
@@ -34,6 +34,7 @@ bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 #define CAPTION "Whitted Ray-Tracer"
 #define VERTEX_COORD_ATTRIB 0
 #define COLOR_ATTRIB 1
+#define BIAS 0.001
 
 unsigned int FrameCount = 0;
 
@@ -497,6 +498,8 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	phit = ray.origin + ray.direction * minDist;
 	nhit = hit->getNormal(phit);
 
+	Vector offset_phit = phit + nhit * BIAS;
+
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		Light* l = scene->getLight(i);
 		L = (l->position - phit).normalize();
@@ -508,14 +511,26 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		reflection = reflection.normalize();
 		
 		if (intensity > 0) {
-			color += calculateColor(nhit, l, L, ray.direction, hit->GetMaterial(), phit);
+			color += calculateColor(nhit, l, L, ray.direction, hit->GetMaterial(), offset_phit);
 		}
+
+	}
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
+		Vector vt = nhit * ((ray.direction * -1) * nhit) + ray.direction;
+		Vector t = vt.normalize();
+		float sin_thetai = vt.length();
+		float sin_thetat = ior_1 / hit->GetMaterial()->GetRefrIndex() * sin_thetai;
+		float cos_thetat = sqrt(1 - pow(sin_thetat, 2));
+
+		Vector refraction = t * sin_thetat + (nhit * -1) * cos_thetat;
+		Ray refrRay = Ray(phit, refraction.normalize());
+		color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
 
 	}
 
 	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
-		Ray reflRay = Ray(phit + nhit*0.001, reflection.normalize());
+		Ray reflRay = Ray(offset_phit, reflection.normalize());
 		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
 	}
 

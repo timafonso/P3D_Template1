@@ -89,8 +89,7 @@ public:
 	Vector CameraToWorld(const Vector& vec) {
 		Vector world;
 		float df = (eye - at).length();
-		world = n * df + v * h * (vec.y / res_y - 0.5f) + u * w * (vec.x / res_x - 0.5f);
-		world *= (-1);
+		world = n * df * (-1) + v * h * (vec.y / res_y - 0.5f) + u * w * (vec.x / res_x - 0.5f);
 		return world.normalize();
 	}
 };
