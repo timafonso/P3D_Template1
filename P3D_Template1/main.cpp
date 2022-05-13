@@ -515,24 +515,60 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		}
 
 	}
-	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
-		Vector vt = nhit * ((ray.direction * -1) * nhit) + ray.direction;
-		Vector t = vt.normalize();
-		float sin_thetai = vt.length();
-		float sin_thetat = ior_1 / hit->GetMaterial()->GetRefrIndex() * sin_thetai;
-		float cos_thetat = sqrt(1 - pow(sin_thetat, 2));
 
-		Vector refraction = t * sin_thetat + (nhit * -1) * cos_thetat;
-		Ray refrRay = Ray(phit, refraction.normalize());
-		color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
-
-	}
-
-	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
+	/*if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
 		Ray reflRay = Ray(offset_phit, reflection.normalize());
 		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+	}*/
+
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
+		Vector Nrefr = nhit;
+		float eta;
+		if (ray.direction * nhit > 0) {
+			Nrefr *= -1;
+			eta = ior_1;
+		}
+		else {
+			eta = 1 / hit->GetMaterial()->GetRefrIndex();
+		}
+		Vector vt = Nrefr * ((ray.direction) * Nrefr) + ray.direction;
+		Vector t = vt.normalize();
+		float sin_thetai = vt.length();
+		if (sin_thetai >= 1/eta) {
+			reflection = ray.direction - Nrefr * (ray.direction * Nrefr) * 2;
+			Ray reflRay = Ray(offset_phit - nhit * 2, reflection.normalize());
+			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+			return color;
+		}
+
+		float sin_thetat = eta * sin_thetai;
+		float cos_thetat = sqrt(1 - pow(sin_thetat, 2));
+
+		Vector refraction = t * sin_thetat + (Nrefr * -1) * cos_thetat;
+		Ray refrRay = Ray(phit, refraction.normalize());
+		color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
+
+		/*float cosi = ray.direction * nhit;
+		float etai = 1, etat = hit->GetMaterial()->GetRefrIndex();
+		Vector n = nhit;
+		if (cosi < 0) { cosi = -cosi; }
+		else { std::swap(etai, etat); n = nhit * -1; }
+		float eta = etai / etat;
+		float k = 1 - eta * eta * (1 - cosi * cosi);
+		if (k < 0) {
+			reflection = ray.direction - n * (ray.direction * n) * 2;
+			Ray reflRay = Ray(offset_phit - nhit * 2, reflection.normalize());
+			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+		}
+		else {
+			Vector refraction = ray.direction * eta + n * (eta * cosi - sqrtf(k));
+			Ray refrRay = Ray(phit, refraction.normalize());
+			color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
+		}*/
 	}
+
+	
 
 	return color;
 }
