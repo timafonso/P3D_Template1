@@ -28,6 +28,9 @@
     <None Include="P3D_Scenes\balls_medium.p3f">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="P3D_Scenes\mount_low.p3f">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Image Include="skybox\back.jpg">

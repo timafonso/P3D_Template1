@@ -451,7 +451,10 @@ void setupGLUT(int argc, char* argv[])
 	}
 }
 
-Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_dir, Material *mat, Vector pos) {
+/////////////////////////////////////////////////////YOUR CODE HERE///////////////////////////////////////////////////////////////////////////////////////
+
+/*************************************************** Calculate Color ****************************************************/
+Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_dir, Material* mat, Vector pos) {
 	Vector halfway_dir = (light_dir + view_dir).normalize();
 	float distance = (light->position - pos).length();
 
@@ -470,110 +473,109 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 		}
 	}
 
-	return (diffuse)/(1 + 0.1*distance + 0.03*distance*distance);
+	return (diffuse) / (1 + 0.1 * distance + 0.03 * distance * distance);
 }
+/***********************************************************************************************************************/
+/************************************************ Object Intersection **************************************************/
 
-/////////////////////////////////////////////////////YOUR CODE HERE///////////////////////////////////////////////////////////////////////////////////////
-Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
-{
+Object* closestObject(Ray ray, float &t) {
 	float minDist = INFINITY;
-	Object* hit = NULL;
-	Vector phit, nhit, L, reflection;
-	Color color = Color(0, 0, 0); 
+	Object* closest = NULL;
 
 	for (int i = 0; i < scene->getNumObjects(); i++) {
 		Object* obj = scene->getObject(i);
 		float dist = 0.0f;
 		if (obj->intercepts(ray, dist)) {
 			if (dist < minDist) {
-				hit = obj;
+				closest = obj;
 				minDist = dist;
 			}
 		}
 	}
+	t = minDist;
+	return closest;
+}
+/***********************************************************************************************************************/
+/************************************************* Light Intersection **************************************************/
 
-	if (hit == NULL) return scene->GetBackgroundColor();
-
-
-	phit = ray.origin + ray.direction * minDist;
-	nhit = hit->getNormal(phit);
-
-	Vector offset_phit = phit + nhit * BIAS;
-
+Color getLightContribution(Ray ray, Vector intersection_point, Vector normal, Material* mat) {
+	Vector light_direction, reflection;
+	Color light_contribution = Color(0, 0, 0);
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		Light* l = scene->getLight(i);
-		L = (l->position - phit).normalize();
+		light_direction = (l->position - intersection_point).normalize();
 
-		float intensity = L * nhit;
+		float intensity = light_direction * normal;
 
 
-		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
+		reflection = ray.direction - normal * (ray.direction * normal) * 2;
 		reflection = reflection.normalize();
-		
+
 		if (intensity > 0) {
-			color += calculateColor(nhit, l, L, ray.direction, hit->GetMaterial(), offset_phit);
+			light_contribution += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
 		}
-
 	}
-
-	/*if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
-		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
-		Ray reflRay = Ray(offset_phit, reflection.normalize());
-		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
-	}*/
-
-	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
-		Vector Nrefr = nhit;
-		float eta;
-		if (ray.direction * nhit > 0) {
-			Nrefr *= -1;
-			eta = ior_1;
-		}
-		else {
-			eta = 1 / hit->GetMaterial()->GetRefrIndex();
-		}
-		Vector vt = Nrefr * ((ray.direction) * Nrefr) + ray.direction;
-		Vector t = vt.normalize();
-		float sin_thetai = vt.length();
-		if (sin_thetai >= 1/eta) {
-			reflection = ray.direction - Nrefr * (ray.direction * Nrefr) * 2;
-			Ray reflRay = Ray(offset_phit - nhit * 2, reflection.normalize());
-			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
-			return color;
-		}
-
-		float sin_thetat = eta * sin_thetai;
-		float cos_thetat = sqrt(1 - pow(sin_thetat, 2));
-
-		Vector refraction = t * sin_thetat + (Nrefr * -1) * cos_thetat;
-		Ray refrRay = Ray(phit, refraction.normalize());
-		color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
-
-		/*float cosi = ray.direction * nhit;
-		float etai = 1, etat = hit->GetMaterial()->GetRefrIndex();
-		Vector n = nhit;
-		if (cosi < 0) { cosi = -cosi; }
-		else { std::swap(etai, etat); n = nhit * -1; }
-		float eta = etai / etat;
-		float k = 1 - eta * eta * (1 - cosi * cosi);
-		if (k < 0) {
-			reflection = ray.direction - n * (ray.direction * n) * 2;
-			Ray reflRay = Ray(offset_phit - nhit * 2, reflection.normalize());
-			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
-		}
-		else {
-			Vector refraction = ray.direction * eta + n * (eta * cosi - sqrtf(k));
-			Ray refrRay = Ray(phit, refraction.normalize());
-			color += rayTracing(refrRay, depth + 1, hit->GetMaterial()->GetRefrIndex()) * hit->GetMaterial()->GetTransmittance();
-		}*/
-	}
-
-	
-
-	return color;
+	return light_contribution;
 }
 
 
+/***********************************************************************************************************************/
+
+Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
+{
+	bool inside = false;
+	float minDist;
+	Object* hit = NULL;
+	Vector phit, nhit, L, reflection;
+	Color color = Color(0, 0, 0);
+
+	//Get closest object that ray intercepts
+	hit = closestObject(ray, minDist);
+
+	//If ray intercepts no object return background color
+	if (hit == NULL) return scene->GetBackgroundColor();
+	
+	//Interception point
+	phit = ray.origin + ray.direction * minDist;
+	//Normal of object in interception point
+	nhit = hit->getNormal(phit);
+
+	//If angle between normal and ray direction is above 90 degrees we are inside the object
+	if (ray.direction * nhit > 0) {
+		nhit = nhit * (-1);
+		inside = true;
+	}
+
+	//Move intersection point up bit to avoid intersection with the same object 
+	Vector offset_phit = phit + nhit * BIAS;
+
+	color += getLightContribution(ray, phit, nhit, hit->GetMaterial());
+
+	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
+		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
+		Ray reflRay = Ray(offset_phit, reflection.normalize());
+		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+	}
+
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
+		float cos_d = - (nhit * ray.direction);
+		float n = (inside) ? (hit->GetMaterial()->GetRefrIndex() / ior_1) : (ior_1 / hit->GetMaterial()->GetRefrIndex());
+		float sin_refr2 = n * n * (1 - cos_d * cos_d);
+		if (sin_refr2 <= 1) {
+			float cos_refr = sqrt(1 - sin_refr2);
+			Vector refraction = ray.direction * n + nhit * (n * cos_d - cos_refr);
+			Ray refr_ray = Ray(phit - nhit * BIAS, refraction);
+			color += rayTracing(refr_ray, depth + 1, ior_1) * hit->GetMaterial()->GetTransmittance();
+		}
+		else {
+			reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
+			Ray reflRay = Ray(offset_phit, reflection.normalize());
+			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+		}
+	}
+
+	return color;
+}
 
 // Render function by primary ray casting from the eye towards the scene's objects
 
