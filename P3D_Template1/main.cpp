@@ -473,7 +473,7 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 		}
 	}
 
-	return (diffuse) / (1 + 0.1 * distance + 0.03 * distance * distance);
+	return (diffuse + specular);// / (1 + 0.1 * distance + 0.03 * distance * distance);
 }
 /***********************************************************************************************************************/
 /************************************************ Object Intersection **************************************************/

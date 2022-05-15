@@ -6,6 +6,13 @@
 #include "scene.h"
 #include "macros.h"
 
+float GetDeterminant2x2(float f1, float f2, float f3, float f4) {
+	return (f1 * f4) - (f2 * f3);
+}
+
+float GetDeterminant3x3(Vector v1, Vector v2, Vector v3) {
+	return v1.x * GetDeterminant2x2(v2.y, v2.z, v3.y, v3.z) - v1.y * GetDeterminant2x2(v2.x, v2.z, v3.x, v3.z) + v1.z * GetDeterminant2x2(v2.x, v2.y, v3.x, v3.y);
+}
 
 Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
 {
@@ -13,6 +20,8 @@ Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
 
 	/* Calculate the normal */
 	normal = Vector(0, 0, 0);
+	normal = (P2 - P0) % (P1 - P0);
+	normal *= -1;
 	normal.normalize();
 
 	//YOUR CODE to Calculate the Min and Max for bounding box
@@ -40,8 +49,19 @@ Vector Triangle::getNormal(Vector point)
 
 bool Triangle::intercepts(Ray& r, float& t) {
 
-	//PUT HERE YOUR CODE
-	return (false);
+	Vector o_a = r.origin - points[0];
+	Vector c_a = points[2] - points[0];
+	Vector _d = r.direction * (-1);
+	Vector b_a = points[1] - points[0];
+	float beta = GetDeterminant3x3(o_a, c_a, _d) / GetDeterminant3x3(b_a, c_a, _d);
+
+	if (beta < 0 || beta > 1) return false;
+
+	float gamma = GetDeterminant3x3(b_a, o_a, _d) / GetDeterminant3x3(b_a, c_a, _d);
+	if (gamma < 0 || beta + gamma > 1) return false;
+
+	t = GetDeterminant3x3(b_a, c_a, o_a) / GetDeterminant3x3(b_a, c_a, _d);
+	return (true);
 }
 
 Plane::Plane(Vector& a_PN, float a_D)
