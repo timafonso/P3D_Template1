@@ -473,7 +473,7 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 		}
 	}
 
-	return (diffuse + specular);// / (1 + 0.1 * distance + 0.03 * distance * distance);
+	return (diffuse + specular) / (0.00005 * distance * distance);
 }
 /***********************************************************************************************************************/
 /************************************************ Object Intersection **************************************************/
@@ -518,6 +518,12 @@ Color getLightContribution(Ray ray, Vector intersection_point, Vector normal, Ma
 	return light_contribution;
 }
 
+float schlickApproximation(float cos_i, float n_i, float n_t) {
+	float R_0 = pow(((n_i - n_t) / (n_i + n_t)), 2);
+	float Kr = R_0 + (1.0f - R_0) * pow((1 - cos_i), 5);
+	return Kr;
+}
+
 
 /***********************************************************************************************************************/
 
@@ -551,27 +557,32 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	color += getLightContribution(ray, phit, nhit, hit->GetMaterial());
 
-	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
-		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
-		Ray reflRay = Ray(offset_phit, reflection.normalize());
-		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
-	}
-
-	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
+	float Kr = 1.0f;
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 7) {
 		float cos_d = - (nhit * ray.direction);
 		float n = (inside) ? (hit->GetMaterial()->GetRefrIndex() / ior_1) : (ior_1 / hit->GetMaterial()->GetRefrIndex());
 		float sin_refr2 = n * n * (1 - cos_d * cos_d);
+
+		Kr = (inside) ? schlickApproximation(cos_d, hit->GetMaterial()->GetRefrIndex(), ior_1) : schlickApproximation(cos_d, ior_1, hit->GetMaterial()->GetRefrIndex());
+
 		if (sin_refr2 <= 1) {
 			float cos_refr = sqrt(1 - sin_refr2);
 			Vector refraction = ray.direction * n + nhit * (n * cos_d - cos_refr);
 			Ray refr_ray = Ray(phit - nhit * BIAS, refraction);
-			color += rayTracing(refr_ray, depth + 1, ior_1) * hit->GetMaterial()->GetTransmittance();
+			color += rayTracing(refr_ray, depth + 1, ior_1) * hit->GetMaterial()->GetTransmittance() * (1 - Kr);
 		}
 		else {
 			reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
 			Ray reflRay = Ray(offset_phit, reflection.normalize());
-			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection();
+			color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr;
 		}
+	}
+
+	
+	if (hit->GetMaterial()->GetReflection() > 0 && depth < 7) {
+		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
+		Ray reflRay = Ray(offset_phit, reflection.normalize());
+		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr;
 	}
 
 	return color;

@@ -61,6 +61,7 @@ bool Triangle::intercepts(Ray& r, float& t) {
 	if (gamma < 0 || beta + gamma > 1) return false;
 
 	t = GetDeterminant3x3(b_a, c_a, o_a) / GetDeterminant3x3(b_a, c_a, _d);
+	if (t < 0) return false;
 	return (true);
 }
 
