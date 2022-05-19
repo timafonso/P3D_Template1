@@ -35,6 +35,7 @@ bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 #define VERTEX_COORD_ATTRIB 0
 #define COLOR_ATTRIB 1
 #define BIAS 0.001
+#define JITT_SAMPLES 3
 
 unsigned int FrameCount = 0;
 
@@ -455,14 +456,14 @@ void setupGLUT(int argc, char* argv[])
 
 /*************************************************** Calculate Color ****************************************************/
 Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_dir, Material* mat, Vector pos) {
-	Vector halfway_dir = (light_dir + view_dir).normalize();
+	Vector halfway_dir = (light_dir - view_dir).normalize();
 	float distance = (light->position - pos).length();
 
 	float diff = max(normal * light_dir, 0);
-	Color diffuse = light->color * diff * mat->GetDiffColor();
+	Color diffuse = light->color * diff * mat->GetDiffColor() * mat->GetDiffuse();
 
 	float spec = pow(max((normal * halfway_dir), 0.0), mat->GetShine());
-	Color specular = mat->GetSpecColor() * spec * light->color;
+	Color specular = mat->GetSpecColor() * spec * light->color * mat->GetSpecular();
 
 	Ray r = Ray(pos, light_dir);
 	for (int i = 0; i < scene->getNumObjects(); i++) {
@@ -472,8 +473,8 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 			return Color(0, 0, 0);
 		}
 	}
-
-	return (diffuse + specular) / (0.00005 * distance * distance);
+	Color c = (diffuse + specular) / (1 + 0.1 * distance + 0.01*distance*distance);
+	return c;
 }
 /***********************************************************************************************************************/
 /************************************************ Object Intersection **************************************************/
@@ -558,7 +559,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	color += getLightContribution(ray, phit, nhit, hit->GetMaterial());
 
 	float Kr = 1.0f;
-	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 7) {
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
 		float cos_d = - (nhit * ray.direction);
 		float n = (inside) ? (hit->GetMaterial()->GetRefrIndex() / ior_1) : (ior_1 / hit->GetMaterial()->GetRefrIndex());
 		float sin_refr2 = n * n * (1 - cos_d * cos_d);
@@ -579,7 +580,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	}
 
 	
-	if (hit->GetMaterial()->GetReflection() > 0 && depth < 7) {
+	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
 		Ray reflRay = Ray(offset_phit, reflection.normalize());
 		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr;
@@ -600,21 +601,30 @@ void renderScene()
 		glClear(GL_COLOR_BUFFER_BIT);
 		scene->GetCamera()->SetEye(Vector(camX, camY, camZ));  //Camera motion
 	}
-
+	set_rand_seed(time(NULL));
 	for (int y = 0; y < RES_Y; y++)
 	{
 		for (int x = 0; x < RES_X; x++)
 		{
-			Color color;
+			Color color = Color(0, 0, 0);
 
-			Vector pixel;  //viewport coordinates
-			pixel.x = x + 0.5f;
-			pixel.y = y + 0.5f;
+			
+			for (int i = 0; i < JITT_SAMPLES; i++) {
+				for (int j = 0; j < JITT_SAMPLES; j++) {
+					Vector pixel;  //viewport coordinates
+					//pixel.x = x + 0.5f;
+					//pixel.y = y + 0.5f;
+					pixel.x = x + (i + rand_float()) / JITT_SAMPLES;
+					pixel.y = y + (j + rand_float()) / JITT_SAMPLES;
 
 
-			/*YOUR 2 FUNCTIONS:*/
-			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-			color = rayTracing(ray, 1, 1.0).clamp();
+					/*YOUR 2 FUNCTIONS:*/
+					Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
+					color += rayTracing(ray, 1, 1.0).clamp();
+				}
+				
+			}
+			color = color / pow(JITT_SAMPLES, 2);
 
 			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template
 
