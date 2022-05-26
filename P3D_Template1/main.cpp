@@ -35,7 +35,7 @@ bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 #define VERTEX_COORD_ATTRIB 0
 #define COLOR_ATTRIB 1
 #define BIAS 0.001
-#define JITT_SAMPLES 3
+#define JITT_SAMPLES 2
 
 unsigned int FrameCount = 0;
 
@@ -84,6 +84,8 @@ int RES_X, RES_Y;
 
 int WindowHandle = 0;
 
+// Supersampling
+bool jittering = true;
 
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -329,6 +331,10 @@ void processKeys(unsigned char key, int xx, int yy)
 		printf("Camera Spherical Coordinates (%f, %f, %f)\n", r, beta, alpha);
 		printf("Camera Cartesian Coordinates (%f, %f, %f)\n", camX, camY, camZ);
 		break;
+
+	case 'j':
+		jittering = !jittering;
+		break;
 	}
 }
 
@@ -473,7 +479,7 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 			return Color(0, 0, 0);
 		}
 	}
-	Color c = (diffuse + specular) / (1 + 0.1 * distance + 0.01*distance*distance);
+	Color c = (diffuse + specular) / (scene->getNumLights() * 0.75f);
 	return c;
 }
 /***********************************************************************************************************************/
@@ -540,7 +546,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	hit = closestObject(ray, minDist);
 
 	//If ray intercepts no object return background color
-	if (hit == NULL) return scene->GetBackgroundColor();
+	if (hit == NULL) return scene->GetSkyboxColor(ray);
 	
 	//Interception point
 	phit = ray.origin + ray.direction * minDist;
@@ -583,10 +589,32 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
 		Ray reflRay = Ray(offset_phit, reflection.normalize());
-		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr;
+		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr * hit->GetMaterial()->GetSpecColor();
 	}
 
 	return color;
+}
+
+float getColorThreshold(int index) {
+	int resY = scene->GetCamera()->GetResY();
+	int resX = scene->GetCamera()->GetResX();
+
+	Color pixelColor = Color(colors[index], colors[index + 1], colors[index + 2]);
+	Color leftPixel = pixelColor;
+	Color downPixel = pixelColor;
+
+	if (index > 0) {
+		leftPixel = Color(colors[index - 3], colors[index - 2], colors[index - 1]);
+	}
+	if ((index + resY * resX) < resY * resX * 3) {
+		Color downPixel = Color(colors[index + resY * resX], colors[index + resY * resX + 1], colors[index + resY * resX + 1]);
+	}
+
+
+	float leftThreshold = abs(leftPixel.r() - pixelColor.r()) + abs(leftPixel.g() - pixelColor.g()) + abs(leftPixel.b() - pixelColor.b());
+	float downThreshold = abs(downPixel.r() - pixelColor.r()) + abs(downPixel.g() - pixelColor.g()) + abs(downPixel.b() - pixelColor.b());
+
+	return max(leftThreshold, downThreshold);
 }
 
 // Render function by primary ray casting from the eye towards the scene's objects
@@ -602,31 +630,45 @@ void renderScene()
 		scene->GetCamera()->SetEye(Vector(camX, camY, camZ));  //Camera motion
 	}
 	set_rand_seed(time(NULL));
+
+	std::cout << jittering << std::endl;
 	for (int y = 0; y < RES_Y; y++)
 	{
 		for (int x = 0; x < RES_X; x++)
 		{
 			Color color = Color(0, 0, 0);
+			Vector pixel;  //viewport coordinates
 
-			
-			for (int i = 0; i < JITT_SAMPLES; i++) {
-				for (int j = 0; j < JITT_SAMPLES; j++) {
-					Vector pixel;  //viewport coordinates
-					//pixel.x = x + 0.5f;
-					//pixel.y = y + 0.5f;
-					pixel.x = x + (i + rand_float()) / JITT_SAMPLES;
-					pixel.y = y + (j + rand_float()) / JITT_SAMPLES;
+			pixel.x = x + 0.5f;
+			pixel.y = y + 0.5f;
 
-
-					/*YOUR 2 FUNCTIONS:*/
-					Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-					color += rayTracing(ray, 1, 1.0).clamp();
-				}
-				
+			if (!jittering) {
+				Ray ray = scene->GetCamera()->PrimaryRay(pixel);
+				color = rayTracing(ray, 1, 1.0).clamp();
 			}
-			color = color / pow(JITT_SAMPLES, 2);
+			else {
+				float threshold = getColorThreshold(index_col);
 
-			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template
+				if (threshold > 0.0f) {
+					for (int i = 0; i < JITT_SAMPLES; i++) {
+						for (int j = 0; j < JITT_SAMPLES; j++) {
+							pixel.x = x - 0.5 + (i + rand_float()) / JITT_SAMPLES;
+							pixel.y = y - 0.5 + (j + rand_float()) / JITT_SAMPLES;
+
+							Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
+
+							Ray ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
+							color += rayTracing(ray, 1, 1.0).clamp();
+						}
+					}
+
+					color = color / pow(JITT_SAMPLES, 2);
+				}
+				else {
+					Ray ray = scene->GetCamera()->PrimaryRay(pixel);
+					color = rayTracing(ray, 1, 1.0).clamp();
+				}
+			}
 
 			img_Data[counter++] = u8fromfloat((float)color.r());
 			img_Data[counter++] = u8fromfloat((float)color.g());
