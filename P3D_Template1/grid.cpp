@@ -91,6 +91,7 @@ void Grid::Build(vector<Object*>& objs) {
 					cells[ix + nx * iy + nx * ny * iz].push_back(obj);
 	}
 
+
 	printf("\nGRID: total cells = %d, total objects = %d, ResX = %d, ResY = %d, ResZ = %d\n\n", cellCount, this->getNumObjects(), nx, ny, nz);
 	//Erase the vector that stores object pointers, but don't delete the objects
 	objects.erase(objects.begin(), objects.end());

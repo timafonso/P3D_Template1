@@ -176,6 +176,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="..\..\..\..\Downloads\dragon\dragon.p3f" />
     <None Include="Dependencies.exe" />
     <None Include="P3D_Scenes\balls_box.p3f" />
     <None Include="P3D_Scenes\balls_high.p3f" />

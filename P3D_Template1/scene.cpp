@@ -11,7 +11,9 @@ float GetDeterminant2x2(float f1, float f2, float f3, float f4) {
 }
 
 float GetDeterminant3x3(Vector v1, Vector v2, Vector v3) {
-	return v1.x * GetDeterminant2x2(v2.y, v2.z, v3.y, v3.z) - v1.y * GetDeterminant2x2(v2.x, v2.z, v3.x, v3.z) + v1.z * GetDeterminant2x2(v2.x, v2.y, v3.x, v3.y);
+	return v1.x * GetDeterminant2x2(v2.y, v2.z, v3.y, v3.z) 
+		- v1.y * GetDeterminant2x2(v2.x, v2.z, v3.x, v3.z)  
+		+ v1.z * GetDeterminant2x2(v2.x, v2.y, v3.x, v3.y);
 }
 
 Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
@@ -27,6 +29,14 @@ Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
 	//YOUR CODE to Calculate the Min and Max for bounding box
 	Min = Vector(+FLT_MAX, +FLT_MAX, +FLT_MAX);
 	Max = Vector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+	
+	Min.x = min(P0.x, min(P1.x, P2.x));
+	Min.y = min(P0.y, min(P1.y, P2.y));
+	Min.z = min(P0.z, min(P1.z, P2.z));
+	
+	Max.x = max(P0.x, max(P1.x, P2.x));
+	Max.y = max(P0.y, max(P1.y, P2.y));
+	Max.z = max(P0.z, max(P1.z, P2.z));
 
 
 	// enlarge the bounding box a bit just in case...
@@ -125,32 +135,6 @@ bool Sphere::intercepts(Ray& r, float& t)
 	else t = b + sqrt(pow(b, 2) - c);
 
 	return true;
-
-	/*Vector L = this->center - r.origin;
-	float tca = (L * r.direction);
-	
-	if (tca < 0)
-		return false;
-
-	float d2 = L.length() * L.length() - tca * tca;
-	if (sqrt(d2) > this->radius)
-		return false;
-
-	float thc = sqrt(this->SqRadius - d2);
-	float t0 = tca - thc;
-	float t1 = tca + thc;
-
-	if (t0 > t1) std::swap(t0, t1);
-
-	if (t0 < 0)
-	{
-		t0 = t1;
-		if (t0 < 0)
-			return false;
-	}
-
-	t = t0;
-	return true;*/
 }
 
 
@@ -161,10 +145,10 @@ Vector Sphere::getNormal(Vector point)
 }
 
 AABB Sphere::GetBoundingBox() {
-	Vector a_min;
-	Vector a_max;
+	Vector a_min(this->center.x - this->radius, this->center.y - this->radius, this->center.z - this->radius);
+	Vector a_max(this->center.x + this->radius, this->center.y + this->radius, this->center.z + this->radius);
 
-	//PUT HERE YOUR CODE
+
 	return(AABB(a_min, a_max));
 }
 

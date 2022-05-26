@@ -472,13 +472,15 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 	Color specular = mat->GetSpecColor() * spec * light->color * mat->GetSpecular();
 
 	Ray r = Ray(pos, light_dir);
-	for (int i = 0; i < scene->getNumObjects(); i++) {
+	if (grid_ptr->Traverse(r))
+		return Color(0, 0, 0);
+	/*for (int i = 0; i < scene->getNumObjects(); i++) {
 		Object* obj = scene->getObject(i);
 		float dist = 0.0f;
 		if (obj->intercepts(r, dist)) {
 			return Color(0, 0, 0);
 		}
-	}
+	}*/
 	Color c = (diffuse + specular) / (scene->getNumLights() * 0.75f);
 	return c;
 }
@@ -541,15 +543,16 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	Object* hit = NULL;
 	Vector phit, nhit, L, reflection;
 	Color color = Color(0, 0, 0);
+	bool is_hit;
 
 	//Get closest object that ray intercepts
-	hit = closestObject(ray, minDist);
-
+	is_hit = grid_ptr->Traverse(ray, &hit, phit);
+	
 	//If ray intercepts no object return background color
-	if (hit == NULL) return scene->GetSkyboxColor(ray);
+	if (!is_hit) return scene->GetSkyboxColor(ray);
 	
 	//Interception point
-	phit = ray.origin + ray.direction * minDist;
+	//phit = ray.origin + ray.direction * minDist;
 	//Normal of object in interception point
 	nhit = hit->getNormal(phit);
 
@@ -657,7 +660,8 @@ void renderScene()
 
 							Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
 
-							Ray ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
+							Ray ray = scene->GetCamera()->PrimaryRay(pixel);
+
 							color += rayTracing(ray, 1, 1.0).clamp();
 						}
 					}
