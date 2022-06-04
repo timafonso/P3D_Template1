@@ -31,7 +31,10 @@
     <None Include="P3D_Scenes\mount_low.p3f">
       <Filter>Resource Files</Filter>
     </None>
-    <None Include="..\..\..\..\Downloads\dragon\dragon.p3f">
+    <None Include="P3D_Scenes\dof.p3f">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="P3D_Scenes\dragon.p3f">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

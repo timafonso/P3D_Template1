@@ -176,12 +176,13 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Downloads\dragon\dragon.p3f" />
     <None Include="Dependencies.exe" />
     <None Include="P3D_Scenes\balls_box.p3f" />
     <None Include="P3D_Scenes\balls_high.p3f" />
     <None Include="P3D_Scenes\balls_low.p3f" />
     <None Include="P3D_Scenes\balls_medium.p3f" />
+    <None Include="P3D_Scenes\dof.p3f" />
+    <None Include="P3D_Scenes\dragon.p3f" />
     <None Include="P3D_Scenes\mount_low.p3f" />
   </ItemGroup>
   <ItemGroup>

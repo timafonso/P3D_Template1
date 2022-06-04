@@ -22,6 +22,11 @@ Vector::Vector(const Vector& v)
 	x = v.x; y = v.y; z = v.z;
 }
 
+int Vector::max_dimension() 
+{
+	return (this->x > this->y) ? ((this->x > this->z) ? 0 : 2) : ((this->y > this->z) ? 1 : 2);
+}
+
 // --------------------------------------------------------------------- assignment operator
 Vector Vector::operator= (const Vector& rhs) {
 	if (this == &rhs)

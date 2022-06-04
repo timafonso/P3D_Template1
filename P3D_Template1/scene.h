@@ -56,10 +56,12 @@ class Light
 {
 public:
 
-	Light( Vector& pos, Color& col ): position(pos), color(col) {};
+	Light( Vector& pos, Color& col): position(pos), color(col), width(0.0f), height(0.0f) {};
+	Light( Vector& pos, Color& col , float& width, float& height): position(pos), color(col), width(width), height(height){};
 	
 	Vector position;
 	Color color;
+	float width, height;
 };
 
 class Object
@@ -117,11 +119,25 @@ public:
 
 	bool intercepts( Ray& r, float& t);
 	Vector getNormal(Vector point);
+	Vector getCenter();
+	float getRadius();
 	AABB GetBoundingBox(void);
 
 private:
 	Vector center;
 	float radius, SqRadius;
+};
+
+class MovingSphere : public Sphere
+{
+public:
+	MovingSphere(Vector& center_0, Vector& center_1, float a_radius, float time0, float time1) :
+		Sphere(center_1, a_radius), center_0(center_0), time0(time0), time1(time1) {};
+
+	bool intercepts(Ray& r, float& t);
+private:
+	Vector center_0;
+	float time0, time1;
 };
 
 class aaBox : public Object   //Axis aligned box: another geometric object

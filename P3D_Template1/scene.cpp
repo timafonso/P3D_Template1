@@ -137,11 +137,42 @@ bool Sphere::intercepts(Ray& r, float& t)
 	return true;
 }
 
+bool MovingSphere::intercepts(Ray& r, float& t)
+{
+	Vector center = this->center_0 + (this->getCenter() - this->center_0) * ((r.time - this->time0) / (this->time1 - this->time0));
+	Vector oc = center - r.origin;
+	float b = r.direction * oc;
+
+	float c = oc * oc - this->getRadius()*this->getRadius();
+
+	if (pow(b, 2) - c <= 0) return false;
+
+	if (c > 0.0f) {
+		if (b <= 0.0f) return false;
+
+		t = b - sqrt(pow(b, 2) - c);
+
+	}
+	else t = b + sqrt(pow(b, 2) - c);
+
+	return true;
+}
+
 
 Vector Sphere::getNormal(Vector point)
 {
 	Vector normal = point - center;
 	return (normal.normalize());
+}
+
+Vector Sphere::getCenter()
+{
+	return this->center;
+}
+
+float Sphere::getRadius()
+{
+	return this->radius;
 }
 
 AABB Sphere::GetBoundingBox() {
@@ -490,6 +521,19 @@ bool Scene::load_p3f(const char* name)
 				this->addObject((Object*)sphere);
 			}
 
+			else if (cmd == "ms")    //Moving Sphere
+			{
+				Vector center0, center1;
+				float radius;
+				float time0, time1;
+				MovingSphere* sphere;
+
+				file >> center0 >> center1 >> radius >> time0 >> time1;
+				sphere = new MovingSphere(center0, center1,  radius, time0, time1);
+				if (material) sphere->SetMaterial(material);
+				this->addObject((Object*)sphere);
+			}
+
 			else if (cmd == "box")    //axis aligned box
 			{
 				Vector minpoint, maxpoint;
@@ -558,20 +602,32 @@ bool Scene::load_p3f(const char* name)
 				Plane* plane;
 
 				file >> P0 >> P1 >> P2;
-				plane = new Plane(P0, P1, P2);
-				if (material) plane->SetMaterial(material);
-				this->addObject((Object*)plane);
+				//if (this->accel_struc_type == NONE) {
+					plane = new Plane(P0, P1, P2);
+					if (material) plane->SetMaterial(material);
+					this->addObject((Object*)plane);
+				//}
 			}
 
 			else if (cmd == "l")  // Need to check light color since by default is white
 			{
 				Vector pos;
 				Color color;
-
+				float width = 0, height = 0;
 				file >> pos >> color;
 
-				this->addLight(new Light(pos, color));
+				this->addLight(new Light(pos, color, width, height));
 
+			}
+			else if (cmd == "al") //Area lights
+			{
+				Vector pos;
+				Color color;
+				float width, height;
+
+				file >> pos >> color >> width >> height;
+
+				this->addLight(new Light(pos, color, width, height));
 			}
 			else if (cmd == "v")
 			{

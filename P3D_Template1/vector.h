@@ -16,7 +16,7 @@ public:
 	float length();
 
 	float getAxisValue(int axis);
-
+	int max_dimension();
 	Vector&	normalize();
 	Vector operator=(const Vector& v);
 	Vector operator+( const Vector& v );

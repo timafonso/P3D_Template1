@@ -29,13 +29,13 @@ bool drawModeEnabled = true;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
-#define MAX_DEPTH 4  //number of bounces
+#define MAX_DEPTH 3  //number of bounces
 
 #define CAPTION "Whitted Ray-Tracer"
 #define VERTEX_COORD_ATTRIB 0
 #define COLOR_ATTRIB 1
 #define BIAS 0.001
-#define JITT_SAMPLES 2
+#define JITT_SAMPLES 4
 
 unsigned int FrameCount = 0;
 
@@ -66,6 +66,10 @@ int size_colors;
 //Array of Pixels to be stored in a file by using DevIL library
 uint8_t* img_Data;
 
+uint8_t cells[JITT_SAMPLES * JITT_SAMPLES][2];
+uint8_t cell_iterator = 0;
+uint16_t samples = 1;
+
 GLfloat m[16];  //projection matrix initialized by ortho function
 
 GLuint VaoId;
@@ -86,6 +90,13 @@ int WindowHandle = 0;
 
 // Supersampling
 bool jittering = true;
+bool soft_shadows = false;
+bool fuzzy = false;
+bool progressive = false;
+bool dof = true;
+bool motion_blur = false;
+
+float roughness = 2.0f;
 
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -472,19 +483,28 @@ Color calculateColor(Vector normal, Light* light, Vector light_dir, Vector view_
 	Color specular = mat->GetSpecColor() * spec * light->color * mat->GetSpecular();
 
 	Ray r = Ray(pos, light_dir);
-	if (grid_ptr->Traverse(r))
-		return Color(0, 0, 0);
-	/*for (int i = 0; i < scene->getNumObjects(); i++) {
-		Object* obj = scene->getObject(i);
-		float dist = 0.0f;
-		if (obj->intercepts(r, dist)) {
+
+	if (bvh_ptr != NULL) {
+		if (bvh_ptr->Traverse(r))
 			return Color(0, 0, 0);
+	}
+	else if (grid_ptr != NULL) {
+		if (grid_ptr->Traverse(r))
+			return Color(0, 0, 0);
+	}
+	else {
+		for (int i = 0; i < scene->getNumObjects(); i++) {
+			Object* obj = scene->getObject(i);
+			float dist = 0.0f;
+			if (obj->intercepts(r, dist))
+				return Color(0, 0, 0);
 		}
-	}*/
-	Color c = (diffuse + specular) / (scene->getNumLights() * 0.75f);
+	}
+	Color c = (diffuse + specular) / (scene->getNumLights() * 0.9f);
 	return c;
 }
 /***********************************************************************************************************************/
+
 /************************************************ Object Intersection **************************************************/
 
 Object* closestObject(Ray ray, float &t) {
@@ -505,23 +525,49 @@ Object* closestObject(Ray ray, float &t) {
 	return closest;
 }
 /***********************************************************************************************************************/
-/************************************************* Light Intersection **************************************************/
 
+/************************************************* Light Intersection **************************************************/
 Color getLightContribution(Ray ray, Vector intersection_point, Vector normal, Material* mat) {
 	Vector light_direction, reflection;
 	Color light_contribution = Color(0, 0, 0);
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		Light* l = scene->getLight(i);
-		light_direction = (l->position - intersection_point).normalize();
+		Vector l_pos = l->position;
 
-		float intensity = light_direction * normal;
+		if (l->width != 0 && l->height != 0 && soft_shadows) {
+			Color aux = Color(0, 0, 0);
+			for (int i = 0; i < JITT_SAMPLES; i++) {
+				for (int j = 0; j < JITT_SAMPLES; j++) {
+					l_pos.x = l_pos.x - 0.5 + (i + rand_float()) * l->width / JITT_SAMPLES;
+					l_pos.y = l_pos.y - 0.5 + (j + rand_float()) * l->height/ JITT_SAMPLES;
+
+					light_direction = (l_pos - intersection_point).normalize();
+
+					float intensity = light_direction * normal;
+
+					reflection = ray.direction - normal * (ray.direction * normal) * 2;
+					reflection = reflection.normalize();
+
+					if (intensity > 0) {
+						aux += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
+					}
+				}
+			}
+			aux = aux / pow(JITT_SAMPLES, 2);
+			light_contribution += aux;
+		}
+		else {
+			light_direction = (l_pos - intersection_point).normalize();
+
+			float intensity = light_direction * normal;
 
 
-		reflection = ray.direction - normal * (ray.direction * normal) * 2;
-		reflection = reflection.normalize();
+			reflection = ray.direction - normal * (ray.direction * normal) * 2;
+			reflection = reflection.normalize();
 
-		if (intensity > 0) {
-			light_contribution += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
+			if (intensity > 0) {
+				light_contribution += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
+			}
 		}
 	}
 	return light_contribution;
@@ -532,10 +578,12 @@ float schlickApproximation(float cos_i, float n_i, float n_t) {
 	float Kr = R_0 + (1.0f - R_0) * pow((1 - cos_i), 5);
 	return Kr;
 }
-
-
 /***********************************************************************************************************************/
 
+
+/**********************************************************************************************************************/
+/*                                                RAY TRACING                                                         */
+/**********************************************************************************************************************/
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
 	bool inside = false;
@@ -543,17 +591,31 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	Object* hit = NULL;
 	Vector phit, nhit, L, reflection;
 	Color color = Color(0, 0, 0);
-	bool is_hit;
+	bool is_hit = false;
 
-	//Get closest object that ray intercepts
-	is_hit = grid_ptr->Traverse(ray, &hit, phit);
+    /***************************/
+	/*    Colision Checking    */
+	/***************************/
+
+	//If grid is active
+	if (grid_ptr != NULL) {
+		is_hit = grid_ptr->Traverse(ray, &hit, phit);
+	}
+	//If bvh is active
+	else if (bvh_ptr != NULL) {
+		is_hit = bvh_ptr->Traverse(ray, &hit, phit);
+	}
+	else {
+		hit = closestObject(ray, minDist);
+		if (hit != NULL) {
+			//Intersection Point
+			phit = ray.origin + ray.direction * minDist;
+		}
+	}
 	
 	//If ray intercepts no object return background color
-	if (!is_hit) return scene->GetSkyboxColor(ray);
-	
-	//Interception point
-	//phit = ray.origin + ray.direction * minDist;
-	//Normal of object in interception point
+	if (!is_hit && hit == NULL) return scene->GetSkyboxColor(ray);
+
 	nhit = hit->getNormal(phit);
 
 	//If angle between normal and ray direction is above 90 degrees we are inside the object
@@ -565,10 +627,13 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	//Move intersection point up bit to avoid intersection with the same object 
 	Vector offset_phit = phit + nhit * BIAS;
 
+	//Get color due to illumination from lights
 	color += getLightContribution(ray, phit, nhit, hit->GetMaterial());
 
+
+	//Reflection and refraction contribution
 	float Kr = 1.0f;
-	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < 3) {
+	if (hit->GetMaterial()->GetTransmittance() != 0 && depth < MAX_DEPTH) {
 		float cos_d = - (nhit * ray.direction);
 		float n = (inside) ? (hit->GetMaterial()->GetRefrIndex() / ior_1) : (ior_1 / hit->GetMaterial()->GetRefrIndex());
 		float sin_refr2 = n * n * (1 - cos_d * cos_d);
@@ -589,8 +654,14 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	}
 
 	
-	if (hit->GetMaterial()->GetReflection() > 0 && depth < 3) {
+	if (hit->GetMaterial()->GetReflection() > 0 && depth < MAX_DEPTH) {
 		reflection = ray.direction - nhit * (ray.direction * nhit) * 2;
+		if (fuzzy) {
+			Vector sphere_center = offset_phit + reflection;
+			Vector sphere_offset = sphere_center + rnd_unit_sphere() * 0.3f;
+			Vector fuzzy_reflection = (sphere_offset - offset_phit).normalize();
+			if (fuzzy_reflection * nhit > 0) reflection = fuzzy_reflection;
+		}
 		Ray reflRay = Ray(offset_phit, reflection.normalize());
 		color += rayTracing(reflRay, depth + 1, ior_1) * hit->GetMaterial()->GetReflection() * Kr * hit->GetMaterial()->GetSpecColor();
 	}
@@ -598,6 +669,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	return color;
 }
 
+/***********************************Adaptive Supersampling******************************************/
 float getColorThreshold(int index) {
 	int resY = scene->GetCamera()->GetResY();
 	int resX = scene->GetCamera()->GetResX();
@@ -619,6 +691,7 @@ float getColorThreshold(int index) {
 
 	return max(leftThreshold, downThreshold);
 }
+/*************************************************************************************************/
 
 // Render function by primary ray casting from the eye towards the scene's objects
 
@@ -634,58 +707,87 @@ void renderScene()
 	}
 	set_rand_seed(time(NULL));
 
-	std::cout << jittering << std::endl;
 	for (int y = 0; y < RES_Y; y++)
 	{
 		for (int x = 0; x < RES_X; x++)
 		{
+			/*************************************************************************************/
+			/*                                   RAY CREATION                                    */
+			/*************************************************************************************/
+
 			Color color = Color(0, 0, 0);
 			Vector pixel;  //viewport coordinates
 
 			pixel.x = x + 0.5f;
 			pixel.y = y + 0.5f;
 
-			if (!jittering) {
+			/*******************
+			* Progressive Mode *
+			*******************/
+			if (progressive) {
+				pixel.x = x - 0.5f + (cells[cell_iterator][0] + rand_float()) / JITT_SAMPLES;
+				pixel.y = y - 0.5f + (cells[cell_iterator][1] + rand_float()) / JITT_SAMPLES;
+
+				Ray ray = scene->GetCamera()->PrimaryRay(pixel, rand_float());
+
+				color += rayTracing(ray, 1, 1.0).clamp();
+			}
+			/*******************
+			*   Default Mode   *
+			*******************/
+			else if (!jittering || soft_shadows) {
 				Ray ray = scene->GetCamera()->PrimaryRay(pixel);
 				color = rayTracing(ray, 1, 1.0).clamp();
 			}
+			/*******************
+			*  Jittering Mode  *
+			*******************/
 			else {
-				float threshold = getColorThreshold(index_col);
+				Ray ray = Ray(Vector(0,0,0), Vector(0, 0, 0));
+				for (int i = 0; i < JITT_SAMPLES; i++) {
+					for (int j = 0; j < JITT_SAMPLES; j++) {
+						pixel.x = x - 0.5 + (i + rand_float()) / JITT_SAMPLES;
+						pixel.y = y - 0.5 + (j + rand_float()) / JITT_SAMPLES;
 
-				if (threshold > 0.0f) {
-					for (int i = 0; i < JITT_SAMPLES; i++) {
-						for (int j = 0; j < JITT_SAMPLES; j++) {
-							pixel.x = x - 0.5 + (i + rand_float()) / JITT_SAMPLES;
-							pixel.y = y - 0.5 + (j + rand_float()) / JITT_SAMPLES;
-
+						if (dof) {
 							Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
-
-							Ray ray = scene->GetCamera()->PrimaryRay(pixel);
-
-							color += rayTracing(ray, 1, 1.0).clamp();
+							ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
 						}
+						else if (motion_blur) {
+							ray = scene->GetCamera()->PrimaryRay(pixel, rand_float());
+						}
+						else {
+							ray = scene->GetCamera()->PrimaryRay(pixel);
+						}
+
+						color += rayTracing(ray, 1, 1.0).clamp();
 					}
+				}
 
-					color = color / pow(JITT_SAMPLES, 2);
-				}
-				else {
-					Ray ray = scene->GetCamera()->PrimaryRay(pixel);
-					color = rayTracing(ray, 1, 1.0).clamp();
-				}
+				color = color / pow(JITT_SAMPLES, 2);
 			}
-
+			/*************************************************************************************/
+		
 			img_Data[counter++] = u8fromfloat((float)color.r());
 			img_Data[counter++] = u8fromfloat((float)color.g());
 			img_Data[counter++] = u8fromfloat((float)color.b());
+			
+			
 
 			if (drawModeEnabled) {
 				vertices[index_pos++] = (float)x;
 				vertices[index_pos++] = (float)y;
-				colors[index_col++] = (float)color.r();
+				if (progressive) {
+					colors[index_col++] = (colors[index_col] * samples + (float)color.r()) / (samples + 1);
+					colors[index_col++] = (colors[index_col] * samples + (float)color.g()) / (samples + 1);
+					colors[index_col++] = (colors[index_col] * samples + (float)color.b()) / (samples + 1);
+				}
+				else {
+					colors[index_col++] = (float)color.r();
+					colors[index_col++] = (float)color.g();
 
-				colors[index_col++] = (float)color.g();
-
-				colors[index_col++] = (float)color.b();
+					colors[index_col++] = (float)color.b();
+				}
 			}
 		}
 
@@ -819,6 +921,13 @@ void init_scene(void)
 
 int main(int argc, char* argv[])
 {
+	
+	for (int i = 0; i < JITT_SAMPLES; i++) {
+		for (int j = 0; j < JITT_SAMPLES; j++) {
+			cells[(i * JITT_SAMPLES) + j][0] = i;
+			cells[(i * JITT_SAMPLES) + j][1] = j;
+		}
+	}
 	//Initialization of DevIL 
 	if (ilGetInteger(IL_VERSION_NUM) < IL_VERSION)
 	{
@@ -844,6 +953,9 @@ int main(int argc, char* argv[])
 			delete(scene);
 			free(img_Data);
 			ch = _getch();
+			samples++;
+
+			cell_iterator = (cell_iterator + 1) % (JITT_SAMPLES * JITT_SAMPLES);
 		} while ((toupper(ch) == 'Y'));
 	}
 

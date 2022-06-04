@@ -1,5 +1,5 @@
 #no acceleration data structure
-accel 1
+accel 0
 #no random samples. Just one fixed sample per pixel
 spp 0
 #blueish background color
@@ -14,7 +14,7 @@ hither 0.01
 resolution 512 512
 aperture 0
 focal 1
-l 4 3 2 1 1 1
+al 4 3 2 1 1 1 1 1
 l 1 -4 4 1 1 1
 l -3 1 5 1 1 1
 f 1 0.75 0.33 1 1 1 0.8 0 10 0 1

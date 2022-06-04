@@ -77,6 +77,13 @@ public:
 		return Ray(eye, ray_dir);
 	}
 
+	Ray PrimaryRay(const Vector& pixel_sample, float time) //  Rays cast from the Eye to a pixel sample which is in Viewport coordinates
+	{
+		Vector ray_dir = CameraToWorld(pixel_sample);
+
+		return Ray(eye, ray_dir, time);
+	}
+
 	Ray PrimaryRay(const Vector& lens_sample, const Vector& pixel_sample) // DOF: Rays cast from  a thin lens sample to a pixel sample
 	{
 		Vector ray_dir;
