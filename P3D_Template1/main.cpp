@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <chrono>
 #include <conio.h>
+#include <cmath>
 
 #include <GL/glew.h>
 #include <GL/freeglut.h>
@@ -92,9 +93,9 @@ int WindowHandle = 0;
 bool jittering = true;
 bool soft_shadows = false;
 bool fuzzy = false;
-bool progressive = false;
-bool dof = true;
-bool motion_blur = false;
+bool progressive =  false;
+bool dof = false;
+bool motion_blur = true;
 
 float roughness = 2.0f;
 
@@ -526,6 +527,39 @@ Object* closestObject(Ray ray, float &t) {
 }
 /***********************************************************************************************************************/
 
+Color lightReflection(Vector l_pos, Vector phit, Vector normal, Vector ray_dir, Material* mat, Light* l) {
+	Vector light_direction = (l_pos - phit).normalize();
+
+	float intensity = light_direction * normal;
+
+	Vector reflection = ray_dir - normal * (ray_dir * normal) * 2;
+	reflection = reflection.normalize();
+
+	if (intensity > 0) {
+		return calculateColor(normal, l, light_direction, ray_dir, mat, phit + normal * BIAS);
+	}
+	return Color(0,0,0);
+}
+
+Vector chooseGridCoords(Vector pos, Light* l = nullptr, int k = 0, int j = 0) {
+
+	if (l != nullptr && k == 0 && j == 0) {
+		pos.x = pos.x - 0.5 + rand_float() * (float)l->width;
+		pos.y = pos.y - 0.5 + rand_float() * (float)l->height;
+	}
+	else if(l != nullptr) {
+		pos.x = pos.x - 0.5 + (k + rand_float()) * l->width / JITT_SAMPLES;
+		pos.y = pos.y - 0.5 + (j + rand_float()) * l->height / JITT_SAMPLES;
+	}
+	else {
+		pos.x = pos.x - 0.5 + (k + rand_float()) / JITT_SAMPLES;
+		pos.y = pos.y - 0.5 + (j + rand_float()) / JITT_SAMPLES;
+	}
+	
+	return pos;
+}
+
+
 /************************************************* Light Intersection **************************************************/
 Color getLightContribution(Ray ray, Vector intersection_point, Vector normal, Material* mat) {
 	Vector light_direction, reflection;
@@ -536,38 +570,26 @@ Color getLightContribution(Ray ray, Vector intersection_point, Vector normal, Ma
 
 		if (l->width != 0 && l->height != 0 && soft_shadows) {
 			Color aux = Color(0, 0, 0);
-			for (int i = 0; i < JITT_SAMPLES; i++) {
-				for (int j = 0; j < JITT_SAMPLES; j++) {
-					l_pos.x = l_pos.x - 0.5 + (i + rand_float()) * l->width / JITT_SAMPLES;
-					l_pos.y = l_pos.y - 0.5 + (j + rand_float()) * l->height/ JITT_SAMPLES;
+			if (!jittering) {
+				for (int k = 0; k < JITT_SAMPLES; k++) {
+					for (int j = 0; j < JITT_SAMPLES; j++) {
+						l_pos = chooseGridCoords(l_pos, l, k, j);
 
-					light_direction = (l_pos - intersection_point).normalize();
-
-					float intensity = light_direction * normal;
-
-					reflection = ray.direction - normal * (ray.direction * normal) * 2;
-					reflection = reflection.normalize();
-
-					if (intensity > 0) {
-						aux += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
+						aux += lightReflection(l_pos, intersection_point, normal, ray.direction, mat, l);
 					}
 				}
+				aux = aux / pow(JITT_SAMPLES, 2);
+				light_contribution += aux;
 			}
-			aux = aux / pow(JITT_SAMPLES, 2);
-			light_contribution += aux;
+			else {
+				l_pos = chooseGridCoords(l_pos, l);
+
+				light_contribution += lightReflection(l_pos, intersection_point, normal, ray.direction, mat, l);
+			}
+			
 		}
 		else {
-			light_direction = (l_pos - intersection_point).normalize();
-
-			float intensity = light_direction * normal;
-
-
-			reflection = ray.direction - normal * (ray.direction * normal) * 2;
-			reflection = reflection.normalize();
-
-			if (intensity > 0) {
-				light_contribution += calculateColor(normal, l, light_direction, ray.direction, mat, intersection_point + normal * BIAS);
-			}
+			light_contribution += lightReflection(l_pos, intersection_point, normal, ray.direction, mat, l);
 		}
 	}
 	return light_contribution;
@@ -614,7 +636,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	}
 	
 	//If ray intercepts no object return background color
-	if (!is_hit && hit == NULL) return scene->GetSkyboxColor(ray);
+	if (!is_hit && hit == NULL) return scene->GetSkyboxColor(ray);//return scene->GetBackgroundColor();
 
 	nhit = hit->getNormal(phit);
 
@@ -695,6 +717,10 @@ float getColorThreshold(int index) {
 
 // Render function by primary ray casting from the eye towards the scene's objects
 
+float lerp(float a, float b, float c) {
+	return a + c * (b - a);
+}
+
 void renderScene()
 {
 	int index_pos = 0;
@@ -725,29 +751,21 @@ void renderScene()
 			* Progressive Mode *
 			*******************/
 			if (progressive) {
-				pixel.x = x - 0.5f + (cells[cell_iterator][0] + rand_float()) / JITT_SAMPLES;
-				pixel.y = y - 0.5f + (cells[cell_iterator][1] + rand_float()) / JITT_SAMPLES;
+				pixel.x = x - 0.5f + rand_float();
+				pixel.y = y - 0.5f + rand_float();
 
-				Ray ray = scene->GetCamera()->PrimaryRay(pixel, rand_float());
+				Ray ray = scene->GetCamera()->PrimaryRay(pixel);
 
 				color += rayTracing(ray, 1, 1.0).clamp();
 			}
 			/*******************
-			*   Default Mode   *
-			*******************/
-			else if (!jittering || soft_shadows) {
-				Ray ray = scene->GetCamera()->PrimaryRay(pixel);
-				color = rayTracing(ray, 1, 1.0).clamp();
-			}
-			/*******************
 			*  Jittering Mode  *
 			*******************/
-			else {
+			else if(jittering){
 				Ray ray = Ray(Vector(0,0,0), Vector(0, 0, 0));
 				for (int i = 0; i < JITT_SAMPLES; i++) {
 					for (int j = 0; j < JITT_SAMPLES; j++) {
-						pixel.x = x - 0.5 + (i + rand_float()) / JITT_SAMPLES;
-						pixel.y = y - 0.5 + (j + rand_float()) / JITT_SAMPLES;
+						pixel = chooseGridCoords(pixel, nullptr, i, j);
 
 						if (dof) {
 							Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
@@ -766,6 +784,20 @@ void renderScene()
 
 				color = color / pow(JITT_SAMPLES, 2);
 			}
+			/*******************
+			*   Default Mode   *
+			*******************/
+			else {
+				Ray ray = Ray(Vector(0, 0, 0), Vector(0, 0, 0));
+				if (dof) {
+					Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
+					ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
+				}
+				else {
+					ray = scene->GetCamera()->PrimaryRay(pixel);
+				}
+				color = rayTracing(ray, 1, 1.0).clamp();
+			}
 			/*************************************************************************************/
 		
 			img_Data[counter++] = u8fromfloat((float)color.r());
@@ -773,14 +805,24 @@ void renderScene()
 			img_Data[counter++] = u8fromfloat((float)color.b());
 			
 			
-
+			
 			if (drawModeEnabled) {
 				vertices[index_pos++] = (float)x;
 				vertices[index_pos++] = (float)y;
 				if (progressive) {
-					colors[index_col++] = (colors[index_col] * samples + (float)color.r()) / (samples + 1);
-					colors[index_col++] = (colors[index_col] * samples + (float)color.g()) / (samples + 1);
-					colors[index_col++] = (colors[index_col] * samples + (float)color.b()) / (samples + 1);
+					if (FrameCount == 0) {
+						colors[index_col++] = (float)color.r();
+						colors[index_col++] = (float)color.g();
+						colors[index_col++] = (float)color.b();
+					}
+					else {
+						colors[index_col] = lerp(colors[index_col], (float)color.r(), 1.0f/FrameCount);
+						index_col++;
+						colors[index_col] = lerp(colors[index_col], (float)color.g(), 1.0f/FrameCount);
+						index_col++;
+						colors[index_col] = lerp(colors[index_col], (float)color.b(), 1.0f/FrameCount);
+						index_col++;
+					}
 				}
 				else {
 					colors[index_col++] = (float)color.r();
@@ -921,13 +963,6 @@ void init_scene(void)
 
 int main(int argc, char* argv[])
 {
-	
-	for (int i = 0; i < JITT_SAMPLES; i++) {
-		for (int j = 0; j < JITT_SAMPLES; j++) {
-			cells[(i * JITT_SAMPLES) + j][0] = i;
-			cells[(i * JITT_SAMPLES) + j][1] = j;
-		}
-	}
 	//Initialization of DevIL 
 	if (ilGetInteger(IL_VERSION_NUM) < IL_VERSION)
 	{
@@ -953,9 +988,7 @@ int main(int argc, char* argv[])
 			delete(scene);
 			free(img_Data);
 			ch = _getch();
-			samples++;
 
-			cell_iterator = (cell_iterator + 1) % (JITT_SAMPLES * JITT_SAMPLES);
 		} while ((toupper(ch) == 'Y'));
 	}
 

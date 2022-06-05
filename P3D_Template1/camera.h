@@ -90,9 +90,6 @@ public:
 		Vector pixel = pixel_sample;
 		pixel.z = -plane_dist;
 		
-		pixel *= focal_ratio;
-	
-		ray_dir = CameraToWorld(pixel * focal_ratio - lens_sample);
 		ray_dir = n * focal_ratio * -plane_dist + v * h * focal_ratio *(pixel.y / res_y - 0.5f) +  u * focal_ratio * w * (pixel.x / res_x - 0.5f);
 		ray_dir = ray_dir.normalize();
 		Vector eye_offset = eye;
