@@ -37,6 +37,7 @@ bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 #define COLOR_ATTRIB 1
 #define BIAS 0.001
 #define JITT_SAMPLES 4
+#define LENS_SAMPLES 8
 
 unsigned int FrameCount = 0;
 
@@ -90,12 +91,12 @@ int RES_X, RES_Y;
 int WindowHandle = 0;
 
 // Supersampling
-bool jittering = true;
+bool jittering = false;
 bool soft_shadows = false;
 bool fuzzy = false;
 bool progressive =  false;
-bool dof = false;
-bool motion_blur = true;
+bool dof = true;
+bool motion_blur = false;
 
 float roughness = 2.0f;
 
@@ -790,8 +791,10 @@ void renderScene()
 			else {
 				Ray ray = Ray(Vector(0, 0, 0), Vector(0, 0, 0));
 				if (dof) {
-					Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
-					ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
+					for (int k = 0; k < LENS_SAMPLES; k++) {
+						Vector lens_sample = rnd_unit_disk() * scene->GetCamera()->GetAperture();
+						ray = scene->GetCamera()->PrimaryRay(lens_sample, pixel);
+					}
 				}
 				else {
 					ray = scene->GetCamera()->PrimaryRay(pixel);
