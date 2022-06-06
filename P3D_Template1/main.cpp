@@ -26,7 +26,7 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = true;
+bool drawModeEnabled = false;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
@@ -91,7 +91,7 @@ int RES_X, RES_Y;
 int WindowHandle = 0;
 
 // Supersampling
-bool jittering = false;
+bool jittering = true;
 bool soft_shadows = false;
 bool fuzzy = false;
 bool progressive =  false;
